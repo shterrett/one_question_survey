@@ -5,7 +5,11 @@ import (
   "io/ioutil"
   "github.com/gorilla/mux"
   "github.com/gorilla/handlers"
+  "labix.org/v2/mgo"
 )
+
+var session *mgo.Session
+var session_error error
 
 func NewQuestionHandler(writer http.ResponseWriter, request *http.Request) {
   file, _ := ioutil.ReadFile("./questions/new.html")
@@ -20,7 +24,15 @@ func (q QuestionIndexHandler) ServeHTTP(writer http.ResponseWriter, request *htt
 
 type QuestionCreateHandler struct{}
 func (q QuestionCreateHandler) ServeHTTP(writer http.ResponseWriter, request *http.Request) {
-  writer.Write([]byte("POST"))
+  request.ParseForm()
+  form := request.Form
+  c := session.DB("oqsurvey").C("questions")
+  c.Insert(form)
+  for key, value := range form {
+    writer.Write([]byte(key))
+    writer.Write([]byte(" | "))
+    writer.Write([]byte(value[0]))
+  }
   // Write Question to database. Return success or failure
 }
 
@@ -37,6 +49,11 @@ func (a AnswerIndexHandler) ServeHTTP(writer http.ResponseWriter, request *http.
 }
 
 func main() {
+  session, session_error = mgo.Dial("localhost")
+  if session_error != nil {
+    panic("Unable to connect to Database")
+  }
+  defer session.Close()
   QuestionsHandler := make(handlers.MethodHandler)
   QuestionsHandler["GET"] = QuestionIndexHandler{}
   QuestionsHandler["POST"] = QuestionCreateHandler{}
