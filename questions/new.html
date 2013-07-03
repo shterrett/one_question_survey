@@ -2,12 +2,48 @@
 <html>
 
 <head>
-  <title>New Question</title>
+  <title>One Question Survey</title>
+  <style>
+    body {
+      color: white;
+      background-color: black;
+      font-family: sans-serif ;
+    }
+    header h1 {
+      text-align: center;
+    }
+
+    label {
+      display: block;
+      width: 85%;
+      margin: 0 auto;
+      text-align: center;
+    }
+    label strong {
+      display: block;
+      width: 85%;
+      margin: 0 auto;
+      text-align: center;
+      font-size: 5em;
+    }
+    label textarea {
+      font-size: 3em;
+      height: 7em;
+      width: 13em;
+    }
+    button {
+      font-size: 1.5em;
+      display: block;
+      width: 45%;
+      margin: 1em auto;
+      height: 3em;
+    }
+  </style>
 </head>
 
 <body>
   <header>
-    <h1>New Question</h1>
+    <h1>Create a One Question Survey</h1>
   </header>
   <section>
     <form method="post" action="/questions">

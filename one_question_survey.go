@@ -12,8 +12,12 @@ var session *mgo.Session
 var session_error error
 
 func NewQuestionHandler(writer http.ResponseWriter, request *http.Request) {
-  file, _ := ioutil.ReadFile("./questions/new.html")
-  writer.Write(file)
+  file, err := ioutil.ReadFile("./questions/new.html")
+  if err != nil {
+    writer.Write([]byte(err.Error()))
+  } else {
+    writer.Write(file)
+  }
 }
 
 type QuestionIndexHandler struct{}
@@ -27,11 +31,16 @@ func (q QuestionCreateHandler) ServeHTTP(writer http.ResponseWriter, request *ht
   request.ParseForm()
   form := request.Form
   c := session.DB("oqsurvey").C("questions")
-  c.Insert(form)
-  for key, value := range form {
-    writer.Write([]byte(key))
-    writer.Write([]byte(" | "))
-    writer.Write([]byte(value[0]))
+  err := c.Insert(form)
+  if err != nil {
+    writer.Write([]byte(err.Error()))
+  } else {
+    for key, value := range form {
+      writer.Write([]byte("Question Successfully Created\n"))
+      writer.Write([]byte(key))
+      writer.Write([]byte(" | "))
+      writer.Write([]byte(value[0]))
+    }
   }
   // Write Question to database. Return success or failure
 }
