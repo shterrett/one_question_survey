@@ -4,6 +4,7 @@ import (
   "net/http"
   "io/ioutil"
   "encoding/json"
+  "strings"
   "github.com/gorilla/mux"
   "github.com/gorilla/handlers"
   "labix.org/v2/mgo"
@@ -59,12 +60,38 @@ func (q QuestionCreateHandler) ServeHTTP(writer http.ResponseWriter, request *ht
 type AnswerCreateHandler struct{}
 func (a AnswerCreateHandler) ServeHTTP(writer http.ResponseWriter, request *http.Request) {
   writer.Write([]byte("New Answer"))
+  url := request.URL.Path
+  urlParts := strings.Split(url, "/")
+  request.ParseForm()
+  form := request.Form
+  form.Add("question_id", urlParts[2])
+  c := session.DB("oqsurvey").C("answers")
+  err := c.Insert(form)
+  if err != nil {
+    writer.Write([]byte(err.Error()))
+  }
+  jsonAnswer, err := json.MarshalIndent(form, "", "  ")
+  writer.Write(jsonAnswer)
   // Write Answer to database. Status code only; no return
 }
 
 type AnswerIndexHandler struct{}
 func (a AnswerIndexHandler) ServeHTTP(writer http.ResponseWriter, request *http.Request) {
-  writer.Write([]byte("Answers"))
+  url := request.URL.Path
+  urlParts := strings.Split(url, "/")
+  questionId := make([]string, 1)
+  questionId[0] = urlParts[2];
+  c := session.DB("oqsurvey").C("answers")
+  var resultArray []bson.M
+  err := c.Find(bson.M{"question_id": questionId}).All(&resultArray);
+  if err != nil {
+    writer.Write([]byte(err.Error()))
+  }
+  jsonAnswers, err := json.MarshalIndent(resultArray, "", "  ")
+  if err != nil {
+    writer.Write([]byte(err.Error()))
+  }
+  writer.Write(jsonAnswers)
   // Read all answers from database (for question). Return as csv or JSON
 }
 
@@ -81,9 +108,9 @@ func main() {
   AnswersHandler["GET"] = AnswerIndexHandler{}
   AnswersHandler["POST"] = AnswerCreateHandler{}
   router := mux.NewRouter()
-  router.HandleFunc("/questions/new", NewQuestionHandler)
+  router.HandleFunc("/questions/new", NewQuestionHandler) // consider Filesystem handler so that css etc is also served
   router.Handle("/questions", QuestionsHandler)
-  router.Handle("/questions/{id}/answers", AnswersHandler) // consider Filesystem handler so that css etc is also served
+  router.Handle("/questions/{id}/answers", AnswersHandler) 
   http.Handle("/", router)
   http.ListenAndServe("localhost:4000", nil)
 }
