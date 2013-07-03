@@ -26,7 +26,7 @@ type QuestionIndexHandler struct{}
 func (q QuestionIndexHandler) ServeHTTP(writer http.ResponseWriter, request *http.Request) {
   c := session.DB("oqsurvey").C("questions")
   var resultArray []bson.M
-  err := c.Find(bson.M{"not a key": nil}).All(&resultArray)
+  err := c.Find(bson.M{}).All(&resultArray)
   if err != nil {
     writer.Write([]byte(err.Error()))
   }
