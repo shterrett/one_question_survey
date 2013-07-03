@@ -3,13 +3,15 @@ package main
 import (
   "net/http"
   "io/ioutil"
+  "encoding/json"
   "github.com/gorilla/mux"
   "github.com/gorilla/handlers"
   "labix.org/v2/mgo"
+  "labix.org/v2/mgo/bson"
 )
 
 var session *mgo.Session
-var session_error error
+var sessionError error
 
 func NewQuestionHandler(writer http.ResponseWriter, request *http.Request) {
   file, err := ioutil.ReadFile("./questions/new.html")
@@ -22,7 +24,17 @@ func NewQuestionHandler(writer http.ResponseWriter, request *http.Request) {
 
 type QuestionIndexHandler struct{}
 func (q QuestionIndexHandler) ServeHTTP(writer http.ResponseWriter, request *http.Request) {
-  writer.Write([]byte("Index"))
+  c := session.DB("oqsurvey").C("questions")
+  var resultArray []bson.M
+  err := c.Find(bson.M{"not a key": nil}).All(&resultArray)
+  if err != nil {
+    writer.Write([]byte(err.Error()))
+  }
+  jsonResult, err := json.MarshalIndent(resultArray, "", "  ")
+  if err != nil {
+    writer.Write([]byte(err.Error()))
+  }
+  writer.Write(jsonResult)  
   // Query all questions from database; present in JSON and CSV
 }
 
@@ -42,7 +54,6 @@ func (q QuestionCreateHandler) ServeHTTP(writer http.ResponseWriter, request *ht
       writer.Write([]byte(value[0]))
     }
   }
-  // Write Question to database. Return success or failure
 }
 
 type AnswerCreateHandler struct{}
@@ -58,8 +69,8 @@ func (a AnswerIndexHandler) ServeHTTP(writer http.ResponseWriter, request *http.
 }
 
 func main() {
-  session, session_error = mgo.Dial("localhost")
-  if session_error != nil {
+  session, sessionError = mgo.Dial("localhost")
+  if sessionError != nil {
     panic("Unable to connect to Database")
   }
   defer session.Close()
@@ -72,7 +83,7 @@ func main() {
   router := mux.NewRouter()
   router.HandleFunc("/questions/new", NewQuestionHandler)
   router.Handle("/questions", QuestionsHandler)
-  router.Handle("/questions/{id}/answers", AnswersHandler)
+  router.Handle("/questions/{id}/answers", AnswersHandler) // consider Filesystem handler so that css etc is also served
   http.Handle("/", router)
   http.ListenAndServe("localhost:4000", nil)
 }
