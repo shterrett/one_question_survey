@@ -4,6 +4,7 @@ import (
   "net/http"
   "io/ioutil"
   "encoding/json"
+  "encoding/csv"
   "strings"
   "github.com/gorilla/mux"
   "github.com/gorilla/handlers"
@@ -23,20 +24,55 @@ func NewQuestionHandler(writer http.ResponseWriter, request *http.Request) {
   }
 }
 
+func WriteJSON(writer http.ResponseWriter, result interface{}){
+  jsonResult, err := json.MarshalIndent(result, "", "  ")
+  if err != nil {
+    writer.Write([]byte(err.Error()))
+  }
+  writer.Write(jsonResult) 
+}
+
+func WriteCSV(writer http.ResponseWriter, result []bson.M) {
+  dataLength := len(result)
+  data := make([][]string, dataLength)
+  // each map[string]interface{} in result
+  for _, item := range result {
+    rowLength := len(item)
+    row := make([]string, rowLength)
+    // each key/value pair in item
+    for _, value := range item {
+      if point, ok := value.([]interface{}); ok {
+        row = append(row, point[0].(string))
+      } else if point, ok := value.(string); ok {
+        row = append(row, point)
+      } else if point, ok := value.(bson.ObjectId); ok {
+        row = append(row, point.String())
+      }
+    }
+    data = append(data, row)
+  }
+  csvWriter := csv.NewWriter(writer)
+  err := csvWriter.WriteAll(data)
+  if err != nil {
+    writer.Write([]byte(err.Error()))
+  }
+}
+
 type QuestionIndexHandler struct{}
 func (q QuestionIndexHandler) ServeHTTP(writer http.ResponseWriter, request *http.Request) {
+  vars := mux.Vars(request)
+  extension := vars["extension"]
   c := session.DB("oqsurvey").C("questions")
   var resultArray []bson.M
   err := c.Find(bson.M{}).All(&resultArray)
   if err != nil {
     writer.Write([]byte(err.Error()))
   }
-  jsonResult, err := json.MarshalIndent(resultArray, "", "  ")
-  if err != nil {
-    writer.Write([]byte(err.Error()))
+  if extension == ".csv" {
+    WriteCSV(writer, resultArray)
+  } else {
+    WriteJSON(writer, resultArray)
   }
-  writer.Write(jsonResult)  
-  // Query all questions from database; present in JSON and CSV
 }
 
 type QuestionCreateHandler struct{}
@@ -70,29 +106,28 @@ func (a AnswerCreateHandler) ServeHTTP(writer http.ResponseWriter, request *http
   if err != nil {
     writer.Write([]byte(err.Error()))
   }
-  jsonAnswer, err := json.MarshalIndent(form, "", "  ")
-  writer.Write(jsonAnswer)
-  // Write Answer to database. Status code only; no return
+  WriteJSON(writer, form)
 }
 
 type AnswerIndexHandler struct{}
 func (a AnswerIndexHandler) ServeHTTP(writer http.ResponseWriter, request *http.Request) {
-  url := request.URL.Path
-  urlParts := strings.Split(url, "/")
+  vars := mux.Vars(request)
+  id := vars["id"];
+  extension := vars["extension"]
   questionId := make([]string, 1)
-  questionId[0] = urlParts[2];
+  questionId[0] = id;
   c := session.DB("oqsurvey").C("answers")
   var resultArray []bson.M
   err := c.Find(bson.M{"question_id": questionId}).All(&resultArray);
   if err != nil {
     writer.Write([]byte(err.Error()))
   }
-  jsonAnswers, err := json.MarshalIndent(resultArray, "", "  ")
-  if err != nil {
-    writer.Write([]byte(err.Error()))
+  if extension == ".csv" {
+    WriteCSV(writer, resultArray)
+  } else {
+    // json
+    WriteJSON(writer, resultArray)
   }
-  writer.Write(jsonAnswers)
-  // Read all answers from database (for question). Return as csv or JSON
 }
 
 func main() {
@@ -110,7 +145,9 @@ func main() {
   router := mux.NewRouter()
   router.HandleFunc("/questions/new", NewQuestionHandler) // consider Filesystem handler so that css etc is also served
   router.Handle("/questions", QuestionsHandler)
-  router.Handle("/questions/{id}/answers", AnswersHandler) 
+  router.Handle("/questions{extension}", QuestionsHandler)
+  router.Handle("/questions/{id}/answers", AnswersHandler)
+  router.Handle("/questions/{id}/answers{extension}", AnswersHandler) 
   http.Handle("/", router)
   http.ListenAndServe("localhost:4000", nil)
 }
