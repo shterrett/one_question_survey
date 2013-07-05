@@ -33,13 +33,17 @@ func WriteJSON(writer http.ResponseWriter, result interface{}){
 }
 
 func WriteCSV(writer http.ResponseWriter, result []bson.M) {
-  dataLength := len(result)
-  data := make([][]string, dataLength)
+  data := make([][]string, 0)
+  headers := make([]string, 0)
+  for key, _ := range result[0] {
+    headers = append(headers, key)
+  }
+  data = append(data, headers)
   // each map[string]interface{} in result
   for _, item := range result {
-    rowLength := len(item)
-    row := make([]string, rowLength)
+    row := make([]string, 0)
     // each key/value pair in item
+    data = append(data, row)
     for _, value := range item {
       if point, ok := value.([]interface{}); ok {
         row = append(row, point[0].(string))
