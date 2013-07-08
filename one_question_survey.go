@@ -2,10 +2,10 @@ package main
 
 import (
   "net/http"
+  "fmt"
   "io/ioutil"
   "encoding/json"
   "encoding/csv"
-  "strings"
   "github.com/gorilla/mux"
   "github.com/gorilla/handlers"
   "labix.org/v2/mgo"
@@ -18,7 +18,7 @@ var sessionError error
 func NewQuestionHandler(writer http.ResponseWriter, request *http.Request) {
   file, err := ioutil.ReadFile("./questions/new.html")
   if err != nil {
-    writer.Write([]byte(err.Error()))
+    fmt.Fprintf(writer, err.Error())
   } else {
     writer.Write(file)
   }
@@ -27,7 +27,7 @@ func NewQuestionHandler(writer http.ResponseWriter, request *http.Request) {
 func WriteJSON(writer http.ResponseWriter, result interface{}){
   jsonResult, err := json.MarshalIndent(result, "", "  ")
   if err != nil {
-    writer.Write([]byte(err.Error()))
+    fmt.Fprintf(writer, err.Error())
   }
   writer.Write(jsonResult) 
 }
@@ -58,7 +58,7 @@ func WriteCSV(writer http.ResponseWriter, result []bson.M) {
   csvWriter := csv.NewWriter(writer)
   err := csvWriter.WriteAll(data)
   if err != nil {
-    writer.Write([]byte(err.Error()))
+    fmt.Fprintf(writer, err.Error())
   }
 }
 
@@ -70,7 +70,7 @@ func (q QuestionIndexHandler) ServeHTTP(writer http.ResponseWriter, request *htt
   var resultArray []bson.M
   err := c.Find(bson.M{}).All(&resultArray)
   if err != nil {
-    writer.Write([]byte(err.Error()))
+    fmt.Fprintf(writer, err.Error())
   }
   if extension == ".csv" {
     WriteCSV(writer, resultArray)
@@ -86,52 +86,103 @@ func (q QuestionCreateHandler) ServeHTTP(writer http.ResponseWriter, request *ht
   c := session.DB("oqsurvey").C("questions")
   err := c.Insert(form)
   if err != nil {
-    writer.Write([]byte(err.Error()))
+    fmt.Fprintf(writer, err.Error())
   } else {
     for key, value := range form {
-      writer.Write([]byte("Question Successfully Created\n"))
-      writer.Write([]byte(key))
-      writer.Write([]byte(" | "))
-      writer.Write([]byte(value[0]))
+      fmt.Fprintf(writer, "Question Successfully Created\n")
+      fmt.Fprintf(writer, key)
+      fmt.Fprintf(writer, " | ")
+      fmt.Fprintf(writer, value[0])
     }
   }
 }
 
 type AnswerCreateHandler struct{}
 func (a AnswerCreateHandler) ServeHTTP(writer http.ResponseWriter, request *http.Request) {
-  writer.Write([]byte("New Answer"))
-  url := request.URL.Path
-  urlParts := strings.Split(url, "/")
+  fmt.Fprintf(writer, "New Answer")
+  vars := mux.Vars(request)
   request.ParseForm()
   form := request.Form
-  form.Add("question_id", urlParts[2])
+  form.Add("question_id", vars["id"])
   c := session.DB("oqsurvey").C("answers")
   err := c.Insert(form)
   if err != nil {
-    writer.Write([]byte(err.Error()))
+    fmt.Fprintf(writer, err.Error())
   }
   WriteJSON(writer, form)
 }
 
-type AnswerIndexHandler struct{}
-func (a AnswerIndexHandler) ServeHTTP(writer http.ResponseWriter, request *http.Request) {
-  vars := mux.Vars(request)
-  id := vars["id"];
-  extension := vars["extension"]
+func GetAnswers(id string) ([]bson.M, error) {
   questionId := make([]string, 1)
   questionId[0] = id;
   c := session.DB("oqsurvey").C("answers")
   var resultArray []bson.M
   err := c.Find(bson.M{"question_id": questionId}).All(&resultArray);
+  return resultArray, err
+}
+
+type AnswerIndexHandler struct{}
+func (a AnswerIndexHandler) ServeHTTP(writer http.ResponseWriter, request *http.Request) {
+  vars := mux.Vars(request)
+  extension := vars["extension"]
+  resultArray, err := GetAnswers(vars["id"])
   if err != nil {
-    writer.Write([]byte(err.Error()))
+    fmt.Fprintf(writer, err.Error())
   }
   if extension == ".csv" {
     WriteCSV(writer, resultArray)
   } else {
-    // json
     WriteJSON(writer, resultArray)
   }
+}
+
+func GetAnswerTotals(answers []bson.M) map[string]int {
+  answerTotals := make(map[string]int)
+  totalAnswers := 0
+  for _, ans := range answers {
+    answerAry := ans["answer"]
+    if answer, ok := answerAry.([]interface{}); ok {
+      answerString := answer[0].(string)
+      answerTotals[answerString] += 1
+      totalAnswers += 1
+    } else {
+      answerTotals["fail"] += 1
+    }
+  }
+  answerTotals["totalAnswers"] = totalAnswers
+  return answerTotals
+}
+
+type AnswersTotalHandler struct{}
+func (a AnswersTotalHandler) ServeHTTP(writer http.ResponseWriter, request *http.Request) {
+  vars := mux.Vars(request)
+  answers, err := GetAnswers(vars["id"])
+  if err != nil {
+    fmt.Fprintf(writer, err.Error())
+  }
+  totals := GetAnswerTotals(answers)
+  WriteJSON(writer, totals)
+}
+
+func GetAnswerPercents(answerMap map[string]int) map[string]float64 {
+  totalAnswers := float64(answerMap["totalAnswers"])
+  answerPercentages := make(map[string]float64)
+  for key, value := range answerMap {
+    answerPercentages[key] = float64(value) / float64(totalAnswers)
+  }
+  return answerPercentages
+}
+
+type AnswersPercentHandler struct{}
+func (a AnswersPercentHandler) ServeHTTP(writer http.ResponseWriter, request *http.Request) {
+  vars := mux.Vars(request)
+  answers, err := GetAnswers(vars["id"])
+  if err != nil {
+    fmt.Fprintf(writer, err.Error())
+  }
+  answerTotals := GetAnswerTotals(answers)
+  answerPercents := GetAnswerPercents(answerTotals)
+  WriteJSON(writer, answerPercents)
 }
 
 func main() {
@@ -146,12 +197,16 @@ func main() {
   AnswersHandler := make(handlers.MethodHandler)
   AnswersHandler["GET"] = AnswerIndexHandler{}
   AnswersHandler["POST"] = AnswerCreateHandler{}
+  answersTotalHandler := AnswersTotalHandler{}
+  answersPercentHandler := AnswersPercentHandler{}
   router := mux.NewRouter()
   router.HandleFunc("/questions/new", NewQuestionHandler) // consider Filesystem handler so that css etc is also served
   router.Handle("/questions", QuestionsHandler)
   router.Handle("/questions{extension}", QuestionsHandler)
   router.Handle("/questions/{id}/answers", AnswersHandler)
   router.Handle("/questions/{id}/answers{extension}", AnswersHandler) 
+  router.Handle("/questions/{id}/answers/total", answersTotalHandler)
+  router.Handle("/questions/{id}/answers/percent", answersPercentHandler)
   http.Handle("/", router)
   http.ListenAndServe("localhost:4000", nil)
 }
