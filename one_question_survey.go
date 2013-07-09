@@ -200,13 +200,17 @@ func main() {
   answersTotalHandler := AnswersTotalHandler{}
   answersPercentHandler := AnswersPercentHandler{}
   router := mux.NewRouter()
-  router.HandleFunc("/questions/new", NewQuestionHandler) // consider Filesystem handler so that css etc is also served
-  router.Handle("/questions", QuestionsHandler)
-  router.Handle("/questions{extension}", QuestionsHandler)
-  router.Handle("/questions/{id}/answers", AnswersHandler)
-  router.Handle("/questions/{id}/answers{extension}", AnswersHandler) 
-  router.Handle("/questions/{id}/answers/total", answersTotalHandler)
-  router.Handle("/questions/{id}/answers/percent", answersPercentHandler)
+  sub := router.Host("{domain:question.dev|question.mpscla|question.sportsclubla.com}").Subrouter()
+  sub.HandleFunc("/questions/new", NewQuestionHandler) // consider Filesystem handler so that css etc is also served
+  sub.Handle("/questions", QuestionsHandler)
+  sub.Handle("/questions{extension}", QuestionsHandler)
+  sub.Handle("/questions/{id}/answers", AnswersHandler)
+  sub.Handle("/questions/{id}/answers{extension}", AnswersHandler) 
+  sub.Handle("/questions/{id}/answers/total", answersTotalHandler)
+  sub.Handle("/questions/{id}/answers/percent", answersPercentHandler)
   http.Handle("/", router)
-  http.ListenAndServe("localhost:4000", nil)
+  err := http.ListenAndServe("localhost:4000", nil)
+  if err != nil {
+    fmt.Println(err.Error())
+  }
 }
